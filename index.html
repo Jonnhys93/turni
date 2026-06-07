@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Turni — Locauto Rent</title>
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
 <style>
 :root{--bg:#0a0d18;--bg2:#111520;--bg3:#161b2e;--border:#252d48;--text:#eef0f8;--muted:#6b7db0;--p1:#60a5fa;--p1bg:#0f2550;--p1dim:#1e3d7a;--p2:#34d399;--p2bg:#052514;--p2dim:#0d4a28;--p3:#fb923c;--p3bg:#2c1005;--p3dim:#5a2208;--gold:#fbbf24;--purple:#a78bfa}
 *{box-sizing:border-box;margin:0;padding:0}
@@ -220,6 +220,14 @@ h1{font-size:clamp(22px,6vw,34px);font-weight:800;letter-spacing:-.02em;line-hei
 
 /* EDIT MODE */
 .edit-mode{padding:10px 14px;display:none}
+.edit-filter{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}
+.edit-search{flex:1;min-width:140px;background:var(--bg3);border:1px solid var(--border);border-radius:5px;padding:8px 12px;color:var(--text);font-size:13px;font-family:'Space Mono',monospace;outline:none}
+.edit-search:focus{border-color:var(--p1)}
+.edit-search::placeholder{color:var(--muted)}
+.edit-toggle{display:flex;gap:2px;background:var(--bg3);border:1px solid var(--border);border-radius:5px;padding:2px}
+.ef-btn{padding:6px 12px;border-radius:4px;font-size:10px;font-weight:700;font-family:'Space Mono',monospace;cursor:pointer;border:none;background:transparent;color:#8b9fd4;transition:all .12s}
+.ef-btn:hover{color:var(--text)}
+.ef-btn.on{background:var(--p1bg);color:var(--p1);box-shadow:0 0 0 1px var(--p1)}
 .edit-note{font-size:10px;color:var(--muted);font-family:'Space Mono',monospace;margin-bottom:10px;padding:6px 10px;background:rgba(251,191,36,.05);border:1px solid rgba(251,191,36,.15);border-radius:5px}
 .edit-grid{display:flex;flex-direction:column;gap:3px;margin-bottom:12px;max-height:60vh;overflow-y:auto}
 .edit-inp{background:var(--bg2);border:1px solid var(--border);border-radius:4px;padding:4px 8px;color:var(--text);font-size:11px;font-family:'Space Mono',monospace;flex:1;outline:none}
@@ -334,7 +342,7 @@ h1{font-size:clamp(22px,6vw,34px);font-weight:800;letter-spacing:-.02em;line-hei
   </details>
 
   <div class="irow">
-    <button class="btn btn-s" onclick="loadDemo()">▷ Demo Aprile 2026</button>
+    <button class="btn btn-s" onclick="loadDemo()">▷ Carica Giugno 2026</button>
     <button class="btn btn-r" onclick="clearStorage()" style="margin-left:auto">🗑 Cancella memoria</button>
   </div>
   <div class="status" id="status"></div>
@@ -477,6 +485,13 @@ h1{font-size:clamp(22px,6vw,34px);font-weight:800;letter-spacing:-.02em;line-hei
   <!-- EDIT -->
   <div class="edit-mode" id="edit-mode">
     <div class="edit-note">✏️ Modifica i turni di questo giorno — clicca un bottone rapido o scrivi il valore direttamente</div>
+    <div class="edit-filter">
+      <input type="text" class="edit-search" id="edit-search" placeholder="🔎 Cerca persona…" oninput="filterEditList()" autocomplete="off">
+      <div class="edit-toggle">
+        <button class="ef-btn on" id="ef-sel" onclick="setEditFilter('sel')">★ Selezionati</button>
+        <button class="ef-btn" id="ef-all" onclick="setEditFilter('all')">Tutti</button>
+      </div>
+    </div>
     <div class="edit-grid" id="egrid"></div>
     <div class="edit-actions">
       <button class="btn btn-g" onclick="saveDay()">✓ Salva giorno</button>
@@ -642,7 +657,7 @@ function readFile(f){
         if(isT2Color(rgb))purpleKeys.add(addr);
         else if(isBlueColor(rgb))blueKeys.add(addr);
       }
-      const csv=XLSX.utils.sheet_to_csv(ws);
+      const csv=XLSX.utils.sheet_to_csv(ws,{FS:'\t',blankrows:false});
       if(!csv||csv.trim().length<10){st('Foglio Excel vuoto o non leggibile','err');return}
       XLSX_PURPLE_KEYS=purpleKeys;
       XLSX_BLUE_KEYS=blueKeys;
@@ -665,17 +680,30 @@ function parseCSV(text, fromXLSX=false){
     if(n.length>=3){hi=r;break}
   }
   const hdr=rows[hi];const nc={};
+  const SKIP=['data','giorno','lun','mar','mer','gio','ven','sab','dom','in turno','mattina','pomeriggio','totali','totale','tot','presenti'];
   for(let c=1;c<hdr.length;c++){
     const v=hdr[c];if(!v||!isNaN(v)||v.length<=1)continue;
-    if(['data','giorno','lun','mar','mer','gio','ven','sab','dom','in turno','mattina','pomeriggio'].includes(v.toLowerCase()))continue;
+    if(SKIP.includes(v.toLowerCase()))continue;
     nc[c]=v.toUpperCase();
   }
   if(Object.keys(nc).length<2){st('Non trovo i nomi. Verifica il formato.','err');return}
   const dr=rows.slice(hi+1).filter(r=>(r[0]||'').match(/\d|lun|mar|mer|gio|ven|sab|dom/i));
   if(dr.length<10){st(`Solo ${dr.length} righe dati trovate`,'err');return}
   NDAYS=dr.length;S={};OR={};ALT_CELLS=new Set();INT_CELLS=new Set();
+  const normVal=(raw)=>{
+    let s=String(raw||'').trim();
+    if(!s)return'R';
+    // "3" da solo = riposo (regola Locauto)
+    if(s==='3'||s==='3.0'||s==='3,0')return'R';
+    if(s.toLowerCase()==='r')return'R';
+    // Decimali italiani: 15,3 → 15.3 ; 6,3 → 6.3
+    if(/^\d+,\d+$/.test(s))s=s.replace(',','.');
+    // Rimuovi .0 finale (es. 7.0 → 7)
+    if(/^\d+\.0$/.test(s))s=s.slice(0,-2);
+    return s;
+  };
   for(const[col,name]of Object.entries(nc)){
-    const vals=dr.map(r=>String(r[parseInt(col)]||'').trim()||'R');
+    const vals=dr.map(r=>normVal(r[parseInt(col)]));
     S[name]=[...vals];OR[name]=[...vals];
   }
   NAMES=Object.keys(S);
@@ -712,17 +740,13 @@ function parseCSV(text, fromXLSX=false){
 }
 
 function loadDemo(){
-  S={"ANTO":["R","7","7","7","7","8","R","R","15.3","15.3","15.3","15.3","R","7","7","7","7","R","R","15.3","15.3","15.3","15.3","R","7","7","7","7","R","15.3"],"ELISA":["AS","9","R","15.3","15.3","15.3","15.3","15.3","R","R","8","7","7","AS","R","7","7","7","9","R","15.3","15.3","15.3","15.3","R","R","7","7","7","R"],"ANDREA":["15.3","R","8","7","7","7","R","R","15.3","15.3","15.3","15.3","R","7","7","7","7","R","R","15.3","15.3","15.3","R","7","7","7","8","R","15.3","15.3"],"RAFFO":["15.3","15.3","R","15.3","15.3","R","7","7","7","7","R","R","15.3","15.3","15.3","R","7","7","7","7","R","7","7","9","15.3","15.3","R","R","7","8"],"CARLO":["R","7","7","7","7","R","7","7","ROL","ROL","R","R","15.3","15.3","15.3","15.3","R","7","7","7","7","R","R","15.3","15.3","15.3","15.3","15.3","R","ROL"],"SHAHAB":["7","R","15.3","12","12","15.3","R","R","7","7","9","R","7","15.3","15.3","R","15.3","15.3","15.3","R","7","7","F","F","R","R","8","7","15.3","15.3"],"DANIELE":["7","7","7","R","R","15.3","15.3","15.3","R","7","7","8","8","8","R","R","7","8","AS","AS","R","15.3","15.3","15.3","R","15.3","15.3","15.3","R","7"],"SAMUELE":["8","15.3","15.3","R","R","7","7","7","R","15.3","15.3","15.3","15.3","R","R","7","7","7","7","R","7","15.3","15.3","R","8","7","7","7","R","15.3"],"TALAL":["15.3","R","15.3","15.3","15.3","15.3","R","R","7","7","7","7","R","7","7","7","15.3","R","15.3","15.3","15.3","R","7","7","R","R","7","9","7","7"],"LIBERATORI":["R","15.3","15.3","15.3","15.3","R","7","7","7","F","R","R","15.3","15.3","15.3","R","7","7","7","7","R","R","7","7","7","7","R","15.3","15.3","15.3"],"MARIKA":["7","7","7","R","7","7","12","R","F","F","R","R","15.3","15.3","15.3","15.3","R","7","7","7","R","15.3","15.3","15.3","15.3","15.3","R","R","7","7"],"NICOLE":["R","R","F","F","R","F","9","7","7","R","15.3","12","15.3","15.3","R","7","7","15.3","15.3","R","7","7","R","15.3","15.3","15.3","15.3","R","9","7"],"LUNA":["15.3","F","F","R","R","F","15.3","15.3","15.3","15.3","R","12","8","7","R","15.3","15.3","15.3","15.3","R","7","7","7","R","7","9","7","7","R","R"],"FIANI":["8","7","R","7","15.3","15.3","15.3","R","R","7","7","7","7","R","7","15.3","15.3","R","R","7","7","7","R","15.3","15.3","15.3","15.3","R","7","7"],"ALESSANDRA":["7","R","7","9","9","7","R","R","15.3","15.3","15.3","15.3","R","7","8","7","R","7","7","7","7","R","15.3","15.3","R","R","7","15.3","15.3","15.3"],"CHAIMAE":["R","15.3","15.3","15.3","R","7","7","7","9","R","7","7","7","R","15.3","15.3","15.3","R","R","7","7","7","7","R","15.3","15.3","15.3","R","7","9"],"SONIA":["7","8","R","7","7","7","R","15.3","15.3","15.3","15.3","15.3","R","R","9","9","R","15.3","15.3","15.3","R","F","F","F","R","R","F","F","F","F"],"LUONI":["R","15.3","15.3","15.3","15.3","15.3","R","R","7","7","7","7","F","F","F","F","F","R","R","15.3","15.3","15.3","R","7","7","7","R","15.3","15.3","R"],"SINKO":["19","R","9","8","8","9","R","R","9","9","8","8","9","R","9","19","R","8","9","9","19","R","19","19","R","R","9","9","19","19"]};
+  S = {"SINKO": ["9", "19", "19", "R", "9", "8", "8", "9", "9", "R", "R", "19", "11", "19", "19", "R", "9", "19", "11", "R", "R", "FERIE", "FERIE", "FERIE", "FERIE", "FERIE", "R", "R", "FERIE", "FERIE"], "TROTTA": ["9", "9", "R", "17", "17", "R", "R", "FERIE", "FERIE", "FERIE", "FERIE", "FERIE", "R", "R", "FERIE", "FERIE", "FERIE", "FERIE", "R", "17", "17", "9", "9", "R", "9", "9", "9", "17", "R", "9"], "ANTO": ["12", "R", "7", "7", "7", "7", "R", "15.3", "15.3", "15.3", "R", "7", "7", "7", "R", "FERIE", "FERIE", "R", "15.3", "12", "8", "15.3", "R", "15.3", "15.3", "15.3", "R", "R", "6.3", "7"], "ELISA": ["15.3", "12", "R", "7", "AS", "7", "7", "R", "15.3", "AS", "7", "7", "R", "R", "15.3", "15.3", "15.3", "AS", "R", "7", "7", "6.3", "R", "R", "6.3", "15.3", "15.3", "15.3", "12", "R"], "ANDREA": ["7", "7", "12", "R", "R", "7", "7", "7", "7", "R", "15.3", "15.3", "15.3", "15.3", "R", "7", "7", "7", "7", "R", "R", "7", "7", "12", "R", "15.3", "15.3", "15.3", "15.3", "R"], "RAFFO": ["R", "7", "7", "12", "15.3", "R", "15.3", "15.3", "15.3", "R", "7", "7", "R", "R", "15.3", "15.3", "15.3", "12", "R", "7", "7", "7", "7", "R", "7", "7", "7", "7", "R", "15.3"], "AZAM": ["7", "7", "R", "15.3", "15.3", "15.3", "15.3", "15.3", "R", "R", "7", "7", "7", "R", "6.3", "15.3", "15.3", "R", "R", "6.3", "6.3", "7", "6.3", "R", "7", "6.3", "7", "R", "7", "6.3"], "CARLO": ["15.3", "15.3", "R", "6.3", "R", "7", "7", "7", "R", "R", "15.3", "15.3", "15.3", "15.3", "R", "6.3", "7", "7", "7", "R", "7", "15.3", "15.3", "15.3", "12", "R", "7", "7", "7", "R"], "SHAHAB": ["7", "7", "7", "R", "15.3", "15.3", "15.3", "R", "7", "11", "7", "R", "12", "15.3", "15.3", "R", "7", "7", "R", "15.3", "15.3", "15.3", "R", "7", "7", "7", "R", "R", "7", "12"], "DANIELE": ["FERIE", "FERIE", "R", "FERIE", "FERIE", "15.3", "15.3", "15.3", "R", "7", "7", "7", "R", "R", "15.3", "15.3", "12", "R", "7", "7", "7", "7", "R", "15.3", "15.3", "R", "7", "7", "R", "15.3"], "SAMUELE": ["7", "R", "15.3", "15.3", "15.3", "R", "7", "7", "7", "9", "R", "15.3", "15.3", "15.3", "12", "R", "R", "7", "7", "7", "7", "R", "12", "R", "15.3", "15.3", "R", "R", "7", "7"], "LIBERATORI": ["R", "7", "7", "R", "15.3", "15.3", "11.3", "R", "12", "15.3", "15.3", "R", "7", "7", "FERIE", "FERIE", "FERIE", "FERIE", "FERIE", "R", "R", "15.3", "15.3", "15.3", "12", "R", "7", "7", "15.3", "R"], "MARIKA": ["15.3", "15.3", "15.3", "15.3", "R", "R", "12", "R", "7", "7", "R", "7", "7", "7", "7", "R", "R", "12", "15.3", "15.3", "12", "R", "7", "7", "7", "7", "R", "15.3", "15.3", "R"], "NICOLE": ["15.3", "15.3", "15.3", "R", "7", "7", "R", "12", "7", "7", "7", "FERIE", "R", "R", "7", "7", "7", "R", "15.3", "15.3", "15.3", "R", "15.3", "15.3", "R", "7", "7", "7", "R", "15.3"], "ELENA R": ["15.3", "15.3", "15.3", "15.3", "FERIE", "R", "R", "7", "7", "7", "R", "7", "7", "7", "7", "7", "R", "R", "12", "7", "7", "R", "15.3", "15.3", "R", "15.3", "15.3", "12", "R", "R"], "FIANI": ["R", "FERIE", "FERIE", "FERIE", "FERIE", "R", "R", "FERIE", "FERIE", "FERIE", "FERIE", "FERIE", "R", "R", "7", "7", "7", "7", "R", "15.3", "15.3", "15.3", "R", "7", "15.3", "15.3", "R", "7", "7", "7"], "MILENA": ["R", "R", "R", "R", "6.3", "6.3", "F", "R", "R", "R", "R", "7", "6.3", "6.3", "R", "R", "R", "R", "7", "F", "F", "R", "R", "R", "R", "F", "6.3", "6.3", "R", "R"], "LUONI": ["15.3", "15.3", "15.3", "R", "R", "42", "7", "6.3", "7", "R", "7", "15.3", "15.3", "12", "AS", "R", "7", "6.3", "6.3", "R", "R", "12", "15.3", "15.3", "15.3", "R", "7", "7", "7", "R"], "DECIO": ["R", "15.3", "15.3", "15.3", "15.3", "R", "7", "7", "6.3", "R", "6.3", "12", "R", "7", "15.3", "15.3", "R", "7", "7", "R", "R", "FERIE", "FERIE", "FERIE", "FERIE", "FERIE", "12", "15.3", "15.3", "R"], "CHAIMAE": ["7", "7", "7", "R", "7", "7", "7", "R", "15.3", "15.3", "12", "R", "7", "7", "7", "R", "15.3", "15.3", "15.3", "R", "R", "7", "7", "7", "7", "R", "15.3", "15.3", "15.3", "R"], "AMANA": ["7", "R", "7", "7", "R", "7", "R", "AS", "AS", "AS", "15.3", "15.3", "R", "R", "AS", "15.3", "R", "AS", "AS", "7", "7", "R", "15.3", "15.3", "15.3", "R", "AS", "15.3", "15.3", "15.3"], "MARTA": ["R", "7", "7", "7", "12", "R", "15.3", "15.3", "R", "7", "7", "R", "15.3", "15.3", "15.3", "R", "7", "12", "8", "R", "R", "7", "7", "7", "R", "12", "11", "15.3", "15.3", "11"], "ALBINO": ["FERIE", "FERIE", "FERIE", "AS", "AS", "R", "R", "AS", "15.3", "15.3", "R", "7", "7", "7", "7", "R", "15.3", "15.3", "R", "7", "15.3", "R", "15.3", "12", "R", "15.3", "15.3", "15.3", "R", "7"], "ALESSIA": ["FERIE", "FERIE", "R", "7", "7", "7", "7", "R", "15.3", "15.3", "15.3", "15.3", "R", "R", "7", "7", "7", "R", "15.3", "15.3", "15.3", "15.3", "R", "R", "7", "7", "7", "7", "R", "15.3"], "MIRIAM": ["7", "R", "15.3", "15.3", "R", "7", "7", "7", "R", "7", "15.3", "15.3", "15.3", "12", "R", "7", "7", "7", "7", "R", "R", "FERIE", "FERIE", "FERIE", "FERIE", "FERIE", "R", "R", "15.3", "15.3"], "CAMILLA": ["7", "6.3", "6.3", "7", "R", "15.3", "15.3", "15.3", "R", "6.3", "7", "6.3", "R", "AS", "AS", "15.3", "15.3", "15.3", "15.3", "R", "R", "FERIE", "FERIE", "FERIE", "FERIE", "FERIE", "R", "R", "FERIE", "R"], "ALESSANDRA": ["15.3", "AS", "AS", "R", "7", "R", "R", "7", "15.3", "15.3", "15.3", "R", "7", "7", "R", "7", "15.3", "15.3", "R", "7", "7", "7", "R", "AS", "AS", "7", "7", "7", "R", "7"], "FABIO": ["7", "7", "R", "7", "15.3", "15.3", "R", "11", "7", "8", "7", "R", "15.3", "15.3", "15.3", "12", "R", "R", "7", "7", "15.3", "15.3", "R", "7", "15.3", "15.3", "R", "R", "7", "7"], "ALIKI": ["15.3", "R", "7", "12", "8", "R", "15.3", "15.3", "15.3", "15.3", "R", "R", "7", "7", "7", "7", "R", "15.3", "15.3", "15.3", "15.3", "R", "7", "7", "7", "7", "R", "R", "7", "7"], "MATTEO": ["6.3", "7", "R", "7", "7", "7", "6.3", "7", "R", "R", "15.3", "15.3", "15.3", "R", "7", "15.3", "15.3", "R", "R", "7", "7", "FERIE", "FERIE", "R", "FERIE", "7", "15.3", "15.3", "R", "15.3"]};
   NAMES=Object.keys(S);OR={};NAMES.forEach(n=>{OR[n]=[...S[n]]});
-  NDAYS=30;DOF=2;MLBL='Aprile 2026';WE=[4,5,11,12,18,19,25,26];edits={};
-  // VANE e MORICCA lavorano su altro terminale (celle viola nell'originale)
-  ALT_CELLS=new Set();INT_CELLS=new Set();
-  ['VANE','MORICCA'].forEach(name=>{
-    if(!S[name])return;
-    S[name].forEach((v,i)=>{if(toH(v)!==null)setAlt(name,i,true)});
-  });
-  const altN=ALT_CELLS.size;
-  st(`✓ Demo: ${NAMES.length} dipendenti · ${NDAYS} giorni · ${altN} celle altro terminale`,'ok');activate();
+  NDAYS=30;DOF=0;MLBL='Giugno 2026';WE=[6,7,13,14,20,21,27,28];edits={};
+  ALT_CELLS=new Set(["ANTO|0", "ANTO|9", "ANTO|19", "ANTO|23", "ELISA|1", "ELISA|3", "ELISA|8", "ELISA|10", "ELISA|14", "ELISA|26", "ELISA|28", "ANDREA|2", "ANDREA|7", "ANDREA|8", "ANDREA|12", "ANDREA|15", "ANDREA|23", "ANDREA|25", "RAFFO|16", "RAFFO|22", "RAFFO|24", "RAFFO|29", "AZAM|4", "CARLO|23", "SHAHAB|6", "SHAHAB|12", "SHAHAB|13", "SHAHAB|20", "SHAHAB|24", "SHAHAB|29", "DANIELE|9", "DANIELE|11", "DANIELE|14", "DANIELE|16", "DANIELE|18", "DANIELE|27", "SAMUELE|2", "SAMUELE|12", "SAMUELE|14", "SAMUELE|18", "SAMUELE|20", "SAMUELE|22", "SAMUELE|24", "SAMUELE|29", "LIBERATORI|2", "LIBERATORI|4", "LIBERATORI|8", "LIBERATORI|13", "LIBERATORI|22", "LIBERATORI|24", "LIBERATORI|28", "MARIKA|2", "MARIKA|6", "MARIKA|8", "MARIKA|12", "MARIKA|17", "MARIKA|19", "MARIKA|20", "NICOLE|0", "NICOLE|4", "NICOLE|7", "NICOLE|18", "NICOLE|20", "NICOLE|22", "NICOLE|25", "ELENA R|0", "ELENA R|7", "ELENA R|11", "ELENA R|15", "ELENA R|18", "ELENA R|26", "ELENA R|27", "FIANI|23", "FIANI|25", "FIANI|29", "LUONI|1", "LUONI|5", "LUONI|6", "LUONI|10", "LUONI|21", "LUONI|24", "LUONI|28", "DECIO|1", "DECIO|3", "DECIO|11", "DECIO|17", "DECIO|26", "DECIO|28", "CHAIMAE|6", "CHAIMAE|10", "CHAIMAE|18", "CHAIMAE|21", "AMANA|0", "AMANA|5", "AMANA|11", "AMANA|15", "AMANA|19", "AMANA|20", "MARTA|1", "MARTA|2", "MARTA|6", "MARTA|16", "MARTA|17", "MARTA|25", "MARTA|27", "ALBINO|14", "ALBINO|27", "ALESSIA|3", "ALESSIA|10", "ALESSIA|14", "ALESSIA|21", "ALESSIA|26", "ALESSIA|27", "MIRIAM|3", "MIRIAM|5", "MIRIAM|9", "MIRIAM|10", "MIRIAM|13", "MIRIAM|16", "MIRIAM|17", "CAMILLA|0", "CAMILLA|5", "CAMILLA|7", "CAMILLA|15", "ALESSANDRA|4", "ALESSANDRA|9", "ALESSANDRA|12", "ALESSANDRA|13", "ALESSANDRA|21", "ALESSANDRA|26", "FABIO|1", "FABIO|13", "FABIO|15", "FABIO|19", "FABIO|21", "FABIO|23", "FABIO|28", "ALIKI|3", "ALIKI|7", "ALIKI|8", "ALIKI|9", "ALIKI|19", "ALIKI|22", "ALIKI|25", "MATTEO|16", "MATTEO|29"]);
+  INT_CELLS=new Set(["ELISA|15", "ANDREA|13", "ANDREA|27", "RAFFO|7", "DANIELE|6", "DANIELE|24", "SAMUELE|3", "SAMUELE|25", "MARIKA|0", "NICOLE|2", "NICOLE|23", "ELENA R|1", "ELENA R|22", "FIANI|20", "FIANI|21", "DECIO|4", "CHAIMAE|8", "CHAIMAE|26", "AMANA|22", "MARTA|12", "MARTA|28", "ALBINO|9", "ALESSIA|19", "MIRIAM|11", "MIRIAM|29", "CAMILLA|16", "ALESSANDRA|10", "FABIO|14", "ALIKI|18"]);
+  st(`✓ Giugno 2026 caricato · ${NAMES.length} dipendenti · ${ALT_CELLS.size} T2 · ${INT_CELLS.size} banco`,'ok');
+  activate();
 }
 
 function activate(){
@@ -1115,11 +1139,54 @@ function renderPanelView(){
     <div class="det-col"><div class="det-ch"><span style="background:#10b981"></span>Ferie/AS (${altri.length})</div>${altri.join('')||'<div class="det-item" style="color:#2a3050">—</div>'}</div>`;
 }
 
+let editFilter = 'sel'; // 'sel' = selected only, 'all' = all people
+let editSearch = '';
+
+function setEditFilter(mode){
+  editFilter=mode;
+  document.getElementById('ef-sel').className='ef-btn'+(mode==='sel'?' on':'');
+  document.getElementById('ef-all').className='ef-btn'+(mode==='all'?' on':'');
+  renderPanelEdit();
+}
+
+function filterEditList(){
+  editSearch=document.getElementById('edit-search').value.toLowerCase().trim();
+  renderPanelEdit();
+}
+
+function getEditNames(){
+  // Get list of names to show based on filter
+  const selNames=sel.slice(0,nP).filter(Boolean);
+  let list;
+  if(editFilter==='sel'&&selNames.length>0){
+    list=selNames;
+  } else {
+    list=NAMES;
+  }
+  if(editSearch){
+    list=list.filter(n=>n.toLowerCase().includes(editSearch));
+  }
+  return list;
+}
+
 function renderPanelEdit(){
   if(!curDay)return;
-  const i=curDay-1;
   const grid=document.getElementById('egrid');grid.innerHTML='';
-  NAMES.forEach(n=>{
+  // Update count badge on "Tutti" button
+  const allBtn=document.getElementById('ef-all');
+  if(allBtn)allBtn.textContent=`Tutti (${NAMES.length})`;
+  const selBtn=document.getElementById('ef-sel');
+  const selCount=sel.slice(0,nP).filter(Boolean).length;
+  if(selBtn)selBtn.textContent=`★ Selezionati (${selCount})`;
+  // Disable "selezionati" if no selection
+  if(selBtn&&selCount===0&&editFilter==='sel'){editFilter='all';selBtn.className='ef-btn';allBtn.className='ef-btn on'}
+
+  const namesToShow=getEditNames();
+  if(!namesToShow.length){
+    grid.innerHTML=`<div style="padding:20px;text-align:center;color:var(--muted);font-family:'Space Mono',monospace;font-size:12px">Nessuna persona trovata${editSearch?' per "'+editSearch+'"':''}.</div>`;
+    return;
+  }
+  namesToShow.forEach(n=>{
     const row=document.createElement('div');
     row.id=`er-${n}`;
     grid.appendChild(row);
@@ -1292,14 +1359,93 @@ function updateChangeBar(){
 // ═══ EXPORT ═══
 function exportXLSX(){
   if(!NAMES.length){alert('Nessun dato da esportare');return}
-  const ws_data=[['DATA',...NAMES]];
+  // Build sheet data
+  const ws_data=[['GIUGNO',...NAMES]];
+  const DOWS_FULL=['LUNEDI','MARTEDI','MERCOLEDI','GIOVEDI','VENERDI','SABATO','DOMENICA'];
   for(let d=0;d<NDAYS;d++){
-    ws_data.push([d+1,...NAMES.map(n=>S[n]?S[n][d]:'R')]);
+    const dow=DOWS_FULL[(DOF+d)%7];
+    ws_data.push([`${d+1} ${dow}`,...NAMES.map(n=>S[n]?S[n][d]:'R')]);
   }
-  const wb=XLSX.utils.book_new();
   const ws=XLSX.utils.aoa_to_sheet(ws_data);
-  XLSX.utils.book_append_sheet(wb,ws,MLBL||'Turni');
+
+  // Styles
+  const FILL_T2     = {patternType:'solid', fgColor:{rgb:'DE04E2'}};   // magenta
+  const FILL_BANCO  = {patternType:'solid', fgColor:{rgb:'0CE9EA'}};   // ciano
+  const FILL_FERIE  = {patternType:'solid', fgColor:{rgb:'EDF40E'}};   // giallo
+  const FILL_AS     = {patternType:'solid', fgColor:{rgb:'C60505'}};   // rosso
+  const FILL_RIP    = {patternType:'solid', fgColor:{rgb:'AECBB2'}};   // grigio
+  const FILL_HDR    = {patternType:'solid', fgColor:{rgb:'1E293B'}};
+  const FONT_HDR    = {bold:true, color:{rgb:'FFFFFF'}, name:'Arial', sz:11};
+  const FONT_NORMAL = {name:'Arial', sz:11};
+  const FONT_BOLD   = {bold:true, name:'Arial', sz:11};
+  const CENTER      = {horizontal:'center', vertical:'center'};
+  const BORDER      = {top:{style:'thin',color:{rgb:'CBD5E1'}},bottom:{style:'thin',color:{rgb:'CBD5E1'}},left:{style:'thin',color:{rgb:'CBD5E1'}},right:{style:'thin',color:{rgb:'CBD5E1'}}};
+
+  // Header row styling
+  for(let c=0;c<=NAMES.length;c++){
+    const addr=XLSX.utils.encode_cell({r:0,c});
+    if(ws[addr])ws[addr].s={fill:FILL_HDR,font:FONT_HDR,alignment:CENTER,border:BORDER};
+  }
+  // Data cells with colors based on values + ALT/INT
+  for(let d=0;d<NDAYS;d++){
+    // Day label cell
+    const dayAddr=XLSX.utils.encode_cell({r:d+1,c:0});
+    if(ws[dayAddr])ws[dayAddr].s={font:FONT_BOLD,alignment:CENTER,border:BORDER};
+    for(let i=0;i<NAMES.length;i++){
+      const name=NAMES[i];
+      const v=S[name]?S[name][d]:'R';
+      const addr=XLSX.utils.encode_cell({r:d+1,c:i+1});
+      if(!ws[addr])continue;
+      let fill=null;
+      if(isAlt(name,d))fill=FILL_T2;
+      else if(isInt(name,d))fill=FILL_BANCO;
+      else if(v==='FERIE'||v==='F')fill=FILL_FERIE;
+      else if(v==='AS'||v==='MALA')fill=FILL_AS;
+      else if(v==='R'||v===''||v===null||v===undefined)fill=FILL_RIP;
+      const style={font:FONT_NORMAL,alignment:CENTER,border:BORDER};
+      if(fill)style.fill=fill;
+      ws[addr].s=style;
+    }
+  }
+  // Column widths
+  ws['!cols']=[{wch:18},...NAMES.map(()=>({wch:12}))];
+  // Freeze panes
+  ws['!freeze']={xSplit:1,ySplit:1};
+
+  // Legend sheet
+  const lg_data=[
+    ['LEGENDA COLORI'],
+    [],
+    ['FERIE','Ferie / giorno di ferie'],
+    ['T2','T2 tutto il turno (pomeriggio) / copertura pause'],
+    ['BANCO','Inizio turno banco al T1 alle 15:30'],
+    ['AS','Assenza'],
+    ['R','Riposo'],
+    [],
+    ['TURNI'],
+    ['7','7:00 → 15:00'],
+    ['8','8:00 → 16:00'],
+    ['9','9:00 → 17:00'],
+    ['11','11:00 → 19:00'],
+    ['12','12:00 → 20:00'],
+    ['15.3 / 15,3','15:30 → 23:30'],
+    ['17','17:00 → 01:00'],
+    ['19','19:00 → 03:00'],
+  ];
+  const lg=XLSX.utils.aoa_to_sheet(lg_data);
+  if(lg['A1'])lg['A1'].s={font:{bold:true,sz:14}};
+  if(lg['A3'])lg['A3'].s={fill:FILL_FERIE,font:FONT_BOLD,alignment:CENTER};
+  if(lg['A4'])lg['A4'].s={fill:FILL_T2,font:{bold:true,color:{rgb:'FFFFFF'}},alignment:CENTER};
+  if(lg['A5'])lg['A5'].s={fill:FILL_BANCO,font:FONT_BOLD,alignment:CENTER};
+  if(lg['A6'])lg['A6'].s={fill:FILL_AS,font:{bold:true,color:{rgb:'FFFFFF'}},alignment:CENTER};
+  if(lg['A7'])lg['A7'].s={fill:FILL_RIP,font:FONT_BOLD,alignment:CENTER};
+  lg['!cols']=[{wch:18},{wch:50}];
+
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'GIUGNO');
+  XLSX.utils.book_append_sheet(wb,lg,'LEGENDA');
   XLSX.writeFile(wb,`turni_${(MLBL||'export').replace(/\s/g,'_').toLowerCase()}.xlsx`);
+  st('✓ File esportato con colori T2 e banco preservati','ok');
 }
 
 // ═══ STATUS ═══
